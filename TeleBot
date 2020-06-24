@@ -1,0 +1,154 @@
+import os   # from psycopg2
+import requests
+import smtplibaio
+import telebot
+import pyowm
+from telebot.types import Message
+from random import randint
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+import psycopg2
+
+stroka = ' '
+
+token = "990483237:AAHV_NWo_rl3dhuM0HgXpzLDQQZ-7p_dZm8"
+bot = telebot.TeleBot(token)
+'''main_url = f'https://api.telegram.org/bot{token}'
+
+answer = {                                  #
+    'chat_id':287656148,                    # Данные, которы мы хотим отправить, chat_id - id нашего пользователя, берем из test_json
+    'text': 'Wake up, Neo'                  #
+}                                           #
+
+test = requests.get(f'{main_url}/getMe')    #основная информация
+test1 = requests.get(f'{main_url}/getUpdates')  #получаение обновлений с последнего запроса
+#test2 = requests.get(f'{main_url}/sendMessage', data=answer)    # отправка данных
+#print(test2.json())
+
+'''
+
+
+class DataBase:
+    def __init__(self):
+        self.conn = psycopg2.connect(dbname='usqtsycy', user='usqtsycy',
+                               password='d_O5K4uRJGJEibpP1DyT5BOD2U2JI7x-',
+                               host='rajje.db.elephantsql.com')
+        self.cur = self.conn.cursor()
+
+    def record_creation(self, mail, username):  # создание нового пользователя в БД
+        self.cur.execute('''INSERT INTO users (mail, status, username ) VALUES (%s, false, %s)''', (mail, username))
+        self.conn.commit()
+
+    def code_assignment(self, mail, code):  # присвоение кода безопасности к почте пользователя
+        self.cur.execute('''UPDATE users SET confirmation_code = %s WHERE users.mail=%s''', (code, mail,))
+        self.conn.commit()
+
+    def code_check(self, username, code):   # Проверка кода безопасности
+        self.cur.execute('''SELECT * FROM users WHERE users.username = %s''', (username,))
+        data = self.cur.fetchall()[0][5]
+        if int(code) == int(data):
+            self.cur.execute('''UPDATE users SET status = TRUE WHERE users.username = %s''', (username,))
+            self.conn.commit()
+            return 1
+
+    def check_reg(self, username):  # Проверка на регистрацию. Если поле "status" имеет значение TRUE, значит пользователь уже зарегестрирован
+        self.cur.execute('''SELECT * FROM users WHERE users.username = %s''', (username,))
+        data = self.cur.fetchall()[0][7]
+        if data == 1:
+            return 0
+
+    def group_add(self, group_number, username):
+        self.cur.execute('''UPDATE users SET group_number = %s WHERE users.username = %s''', (group_number, username,))
+        self.conn.commit()
+
+
+db = DataBase()
+
+
+def SendMail(host_mail, host_password, receiver):
+    message = randint(1000,9999)
+    message = str(message)
+    db.code_assignment(receiver, message)
+    server = smtplib.SMTP('smtp.gmail.com', 587)
+    server.starttls()
+    server.login(host_mail, host_password)
+    server.sendmail(host_mail, receiver, message)
+    server.quit()
+
+
+@bot.message_handler(commands=['start','help'])
+def command_handler(message: Message):
+    bot.reply_to(message, 'Poka chto nichego netu =(')
+
+
+@bot.message_handler(commands=['reg'])
+def send_code_1(message: Message):
+    bot.send_message(message.chat.id, 'Введите, пожалуйста, свою электронну почту dvfu')
+
+
+@bot.message_handler(func=lambda message: '@gmail.com' in message.text or '@students.dvfu.ru' in message.text)
+def got_email(message: Message):
+    '''
+    if db.check_reg(message.chat.username):
+    '''
+    db.record_creation(message.text.strip(), message.chat.username)
+    SendMail('dvfu.schedule@gmail.com', 'Azsuna_power99', message.text.strip())
+    bot.send_message(message.chat.id, 'На вашу почту был выслан код подтверждения. Введите его:')
+    '''
+    else:
+        bot.send_message(message.chat.id, 'Извините, вы уже активировали учетную запись')
+    '''
+
+@bot.message_handler(func=lambda message: message.text.isnumeric() and 1000 <= int(message.text) <= 9999)
+def got_code(message: Message):
+    if db.code_check(message.chat.username, message.text):
+        bot.send_message(message.chat.id, 'Код принят, вы зарегестрированы!')
+        bot.send_message(message.chat.id, 'Наконец, введите номер своей группы:')
+    else:
+        bot.send_message(message.chat.id, 'Вы ввели неверный код, попробуйте снова')
+
+
+@bot.message_handler(func=lambda message: '-' in message.text and '.' in message.text)
+def group_choose(message: Message):
+    db.group_add(message.text.strip(), message.chat.username)
+    bot.send_message(message.chat.id, 'Ваша группа была успешно добавлена!')
+
+
+'''
+host_mail - адрес на основе которого создастся SMTP сервер,
+            также с этого же адреса и будет отправлено сообщение
+host_password - пароль к host аккаунту
+receiver - адрес получателя
+content - содержимое сообщения
+'''
+
+
+'''
+@bot.message_handler(content_types=['text'])      #  реагирует только на текст
+def echo_digits(message: Message):                #
+    if "Привет" or "Hello" in message.text:      # если в тексте найдено слово, выводит ответ
+        bot.reply_to(message, 'Hello')            #
+        return                                    #
+    bot.reply_to(message, str(random.random()))# рандомное число от 0 до 1
+'''
+
+
+@bot.message_handler(commands=['weather'])
+def weather_1(message: Message):
+    owm = pyowm.OWM('1586c818dc67d8e6a6f3db038ae3cbae')
+    weather = owm.weather_at_place('Владивосток')
+    w = weather.get_weather()
+    desc = w.get_detailed_status()
+    temperature = w.get_temperature('celsius')['temp']
+    hum = w.get_humidity()
+    wind = w.get_wind()['speed']
+    clearSky = u'\U00002600'
+    rain = u'\U00002614'
+    bot.send_message(message.chat.id, 'Сейчас во Владивостоке: ' + str(desc) + clearSky +'\n' +
+                     'температура: ' + str(temperature) + ' С' + '\n' + 'влажность: '
+                     + str(hum) + ' % ' + rain + '\n' + 'скорость ветра: ' + str(wind) + 'м\с.')
+
+
+print('Bot has started')
+bot.polling()  # задержка 4 сек.
